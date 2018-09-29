@@ -1,0 +1,194 @@
+library(rioja)
+library(grid)
+library(gridExtra)
+library(dplyr)
+library(vegan)
+library(analogue)
+
+### MAKE DICTIONARIES FOR HABITAT TYPES TO MAKE % TYPE PLOTS LATER ###
+
+#prcurve data
+diatom <- read.csv("Babogaya diatom cleaned complete count data percent.csv", row.names = 1, header=TRUE, sep=",", check.names=FALSE)
+# Change any NA it may have changed from 0 back to 0
+diatom <- diatom[-1]
+diatom[is.na(diatom <- diatom)] <- 0
+
+#prcurve
+di.pcca <- prcurve(diatom, method = "ca", trace = T, vary = T, penalty = 1.4, plotit = T)
+
+#extract scores to plot
+prc <- scores(di.pcca)
+
+#normalised 0-1 and then by variance explained as in Bennion
+prcnorm <- (prc-min(prc))/(max(prc)-min(prc))
+prcnorm <- varExpl(di.pcca)*prcnorm
+
+#get depth scores before removing them for other stats
+comp.raw <- read.csv("Babocomp.csv", sep=",", check.names = F)
+comp.depth <- comp.raw$`Depth (cm)`
+comp.raw <- comp.raw[-1:-2]
+float.raw <- read.csv("Babofloat.csv", sep=",", check.names = F)
+float.depth <- float.raw$`Depth (cm)`
+float.raw <- float.raw[-1:-2]
+
+# Remove diatom taxa where total abundanace is less than 5%
+
+mxc <- apply(comp.raw, 2, max)
+comp.data <- comp.raw[, mxc>5]
+mxf <- apply(float.raw, 2, max)
+float.data <- float.raw[, mxf>5]
+
+#abbreviate based on CEP if you like
+make.cepnames(colnames(comp.data))
+colnames(comp.data) <- make.cepnames(colnames(comp.data))
+make.cepnames(colnames(float.data))
+colnames(float.data) <- make.cepnames(colnames(float.data))
+
+#Depths to have prc scores against
+diatom.raw <- read.csv("Babogaya diatom cleaned complete count data percent.csv", sep=",")
+diatom.raw <- cbind(prc, diatom.raw)
+
+# filter for prc composite diagram and floating diagram 
+comp <- filter(diatom.raw, Depth..cm. < 850)
+float <- filter(diatom.raw, Depth..cm. > 850)
+#make the scores into a seperate item to plot seperatley
+prc.comp <- comp[1]
+prc.float <- float[1]
+
+#reduce to make conc. more readale on axis ticks
+conccomp <- comp[3]/1000
+concfloat <- float[3]/1000
+
+#add a blank column for zones [2] and lithology [3] and a column for conc [4]
+prc.comp["Zones"] <- 0
+prc.comp["Lithology"] <- 0
+prc.comp["Valve\nconc."] <- conccomp
+
+prc.float["Zones"] <- 0
+prc.float["Lithology"] <- 0
+prc.float["Valve\nconc."] <- concfloat
+
+# use for a future dendrogram from constrained cluster analysis
+dissc <- dist(sqrt(comp.data/100)^2)
+dissf <- dist(sqrt(float.data/100)^2)
+clustc <- chclust(dissc, method="coniss")
+clustf <- chclust(dissf, method="coniss")
+
+# broken stick model suggests significant zones
+bstick(clustc)
+bstick(clustf)
+
+windows(width=12, height=10)
+
+pdf("Babogaya diatom diagram composite.pdf", width = 12, height = 6, useDingbats=F)
+
+blank <- strat.plot(prc.comp[3], 
+                    yvar = comp.depth, y.rev=TRUE, y.tks=c(50, 75, 100, 125, 150, 175, 200, 225, 250, 275, 300, 325, 350, 375, 400, 425, 450, 475, 500, 525, 550, 575, 600, 625, 650, 675, 700, 725, 750, 775, 800, 825, 850),
+                    xRight=0.14, yBottom = 0.07, yTop = 0.8, x.pc.lab=T,
+                    col.line = "NA", col.poly.line = "NA", col.bar = "NA", ylabel="Depth (cm)",
+                    y.axis=T, srt.xlabel=0, cex.xlabel=1, xSpace=0.01)
+
+x <- strat.plot(comp.data[1:26], yvar=comp.depth, y.axis=F,
+                 y.rev=TRUE, xLeft=0.14, xRight = 0.75, yBottom = 0.075, yTop = 0.8,
+                 plot.line=FALSE, plot.poly=FALSE, plot.bar=TRUE,
+                 col.bar="blue", lwd.bar=2, scale.percent=TRUE, 
+                 cex.xlabel=0.9, srt.xlabel=45, add=T,
+                 xSpace=0.01, x.pc.lab=TRUE, x.pc.inc=20, x.pc.omit0=TRUE,
+                 las=2)
+
+strat.plot(prc.comp[1], 
+           yvar = comp.depth, y.rev=TRUE, x.pc.lab=TRUE,x.pc.inc=50, scale.percent=T,
+           xLeft = 0.75, xRight=0.82, yBottom = 0.075, yTop = 0.8, x.pc.omit0=F,
+           y.axis=FALSE, add=TRUE, srt.xlabel=0, cex.xlabel=1)
+
+strat.plot(prc.comp[4], 
+           yvar = comp.depth, y.rev=TRUE, x.pc.lab=TRUE,x.pc.inc=100, scale.percent=T,
+           xLeft = 0.82, xRight=0.9, yBottom = 0.075, yTop = 0.8, x.pc.omit0=F,
+           y.axis=FALSE, add=TRUE, srt.xlabel=0, cex.xlabel=1, xSpace=0.01,
+           plot.line=T, plot.poly=FALSE, plot.bar=FALSE, plot.symb=TRUE, symb.pch=16, symb.cex=0.6, 
+           col.line="Black")
+
+strat.plot(prc.comp[2], 
+           yvar = comp.depth, y.rev=TRUE, 
+           xLeft = 0.899, xRight=1, yBottom = 0.075, yTop = 0.8, x.pc.lab=T,
+           col.line = "NA", col.poly.line = "Black", col.bar = "NA",
+           y.axis=FALSE, add=TRUE, srt.xlabel=0, cex.xlabel=1, xSpace=0.01, 
+           clust=clustc, clust.width=0.05)
+
+# add zones. In this case hard to tell but breaks at 3. 
+# A sub-zone for the Aulacoseira is useful though so add 5.
+addClustZone(x, clustc, 4, col="red")
+
+##### PLOT AREA P:B RATIO ######
+
+strat.plot(Planktonic, 
+           yvar = comp.depth, y.rev=TRUE, y.tks=c(50, 75, 100, 125, 150, 175, 200, 225, 250, 275, 300, 325, 350, 375, 400, 425, 450, 475, 500, 525, 550, 575, 600, 625, 650, 675, 700, 725, 750, 775, 800, 825, 850),
+           x.pc.lab=T,
+           col.line = "Blue", plot.poly=F, col.poly.line = "NA", col.bar = "NA", ylabel="Depth (cm)",
+           y.axis=F, srt.xlabel=0, cex.xlabel=1, xSpace=0.01)
+
+strat.plot(Benthic, 
+           yvar = comp.depth, y.rev=TRUE, y.tks=c(50, 75, 100, 125, 150, 175, 200, 225, 250, 275, 300, 325, 350, 375, 400, 425, 450, 475, 500, 525, 550, 575, 600, 625, 650, 675, 700, 725, 750, 775, 800, 825, 850),
+           x.pc.lab=T, y.axis=F, x.axis=T,
+           col.line = "Red", col.poly.line = "NA", col.bar = "NA", ylabel=NA,
+           x.names=NA, srt.xlabel=0, cex.xlabel=1, xSpace=0.01, add=T)
+
+##### WORK OUT THE % AND POSITION IN GRAPH #####
+
+dev.off()
+
+### Same for float ###
+
+pdf("Babogaya diatom diagram float.pdf", width = 12, height = 6, useDingbats=F)
+
+blank <- strat.plot(prc.float[3], 
+                    yvar = float.depth, y.rev=TRUE, y.tks=c(1150, 1175, 1200, 1225, 1250, 1275, 1300, 1325, 1350, 1375, 1400, 1425, 1450, 1475, 1500, 1525, 1550, 1575, 1600, 1625),
+                    xRight=0.14, yBottom = 0.07, yTop = 0.8, x.pc.lab=T,
+                    col.line = "NA", col.poly.line = "NA", col.bar = "NA", ylabel="Depth (cm)",
+                    y.axis=T, srt.xlabel=0, cex.xlabel=1, xSpace=0.01)
+
+x <- strat.plot(float.data, yvar=float.depth, y.axis=F,
+                y.rev=TRUE, xLeft=0.14, xRight = 0.75, yBottom = 0.075, yTop = 0.8,
+                plot.line=FALSE, plot.poly=FALSE, plot.bar=TRUE,
+                col.bar="blue", lwd.bar=2, scale.percent=TRUE, 
+                cex.xlabel=0.9, srt.xlabel=45, add=T,
+                xSpace=0.01, x.pc.lab=TRUE, x.pc.inc=20, x.pc.omit0=TRUE,
+                las=2)
+
+strat.plot(prc.float[1], 
+           yvar = float.depth, y.rev=TRUE, x.pc.lab=TRUE,x.pc.inc=50, scale.percent=T,
+           xLeft = 0.75, xRight=0.82, yBottom = 0.075, yTop = 0.8, x.pc.omit0=F,
+           y.axis=FALSE, add=TRUE, srt.xlabel=0, cex.xlabel=1)
+
+strat.plot(prc.float[4], 
+           yvar = float.depth, y.rev=TRUE, x.pc.lab=TRUE,x.pc.inc=100, scale.percent=T,
+           xLeft = 0.82, xRight=0.9, yBottom = 0.075, yTop = 0.8, x.pc.omit0=F,
+           y.axis=FALSE, add=TRUE, srt.xlabel=0, cex.xlabel=1, xSpace=0.01,
+           plot.line=T, plot.poly=FALSE, plot.bar=FALSE, plot.symb=TRUE, symb.pch=16, symb.cex=0.6, 
+           col.line="Black")
+
+strat.plot(prc.float[2], 
+           yvar = float.depth, y.rev=TRUE, 
+           xLeft = 0.899, xRight=1, yBottom = 0.075, yTop = 0.8, x.pc.lab=T,
+           col.line = "NA", col.poly.line = "Black", col.bar = "NA",
+           y.axis=FALSE, add=TRUE, srt.xlabel=0, cex.xlabel=1, xSpace=0.01, 
+           clust=clustf, clust.width=0.05)
+
+# add zones. In this case hard to tell but breaks at 3. 
+# A sub-zone for the Aulacoseira is useful though so add 5.
+addClustZone(x, clustf, 4, col="red")
+
+dev.off()
+
+#Draw lines across entire graph not 
+## just diatom data using addclust as reference
+
+axis(side=1, at=c(2.5,19.62),col="red",line=-4.37, lty=2,
+     tick=T,labels=rep("",2),lwd=1,lwd.ticks=0)
+
+axis(side=1, at=c(2.5, 19.72),col="red",line=-7.28, lty=2,
+     tick=T,labels=rep("",2),lwd=1,lwd.ticks=0)
+
+axis(side=1, at=c(2.5,19.72),col="red",line=-13.92, lty=2,
+     tick=T,labels=rep("",2),lwd=1,lwd.ticks=0)
+
